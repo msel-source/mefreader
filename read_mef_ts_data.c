@@ -175,7 +175,7 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     else
         num_samps = end_samp - start_samp;
     
-    fprintf(stderr, "Num_samps = %d\n", num_samps);
+    //fprintf(stderr, "Num_samps = %d\n", num_samps);
     
     // Iterate through segments, looking for data that matches our criteria
     n_segments = channel->number_of_segments;
@@ -352,7 +352,9 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     compressed_data_buffer = (ui1 *) malloc((size_t) total_data_bytes);
     cdp = compressed_data_buffer;
     
-    memset_int(decomp_data, RED_NAN, num_samps);
+    // fill buffer with NAN's if specifiying by time.  No need to do this if specifying by sample.
+    if (times_specified)
+        memset_int(decomp_data, RED_NAN, num_samps);
 
     // read in RED data
     // normal case - everything is in one segment
