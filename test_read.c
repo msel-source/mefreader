@@ -56,7 +56,7 @@ int main()
     
     // set parameters for next test
     start_samp = 0;
-    end_samp = start_samp + (10 * sampling_frequency);  // 10 seconds of data, at 250 sampling frequency
+    end_samp = start_samp + (10 * sampling_frequency);  // 10 seconds of data
     
     // get data
     samps_returned = read_mef_ts_data_by_samp(channel_path, NULL, start_samp, end_samp, samp_buf, NULL);
