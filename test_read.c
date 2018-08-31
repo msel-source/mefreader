@@ -64,7 +64,7 @@ int main()
     // output data
     printf("Samps returned: %d\n", samps_returned);
     for (int i=0;i<samps_returned;i++)
-        printf("samp: %d, time: %ld\n", samp_buf[i], start_time + (si8)(i * (1e6/sampling_frequency)));
+        printf("samp: %d\n", samp_buf[i]);
     
     printf("All done.\n");
 
