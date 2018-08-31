@@ -21,10 +21,12 @@
 
 #include "meflib.h"
 
-si4 read_mef_ts_data_by_time(si1 *channel_path, si1 *password, si8 start_time, si8 end_time, si4 *decomp_data);
+si4 read_mef_ts_data_by_time(si1 *channel_path, si1 *password, si8 start_time, si8 end_time, si4 *decomp_data, CHANNEL *channel_passed_in);
+si4 read_mef_ts_data_by_samp(si1 *channel_path, si1 *password, si8 start_samp, si8 end_samp, si4 *decomp_data, CHANNEL *channel_passed_in);
+
 
 // base function, should not be called by user directly
-si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_time, si8 end_time, si4 times_specified, si4 *decomp_data);
+si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_value, si4 times_specified, si4 *decomp_data, CHANNEL *channel_passed_in);
 
 // helper functions
 si8 sample_for_uutc_c(si8 uutc, CHANNEL *channel);
