@@ -24,8 +24,8 @@
 int main()
 {
     si1 channel_path[MEF_FULL_FILE_NAME_BYTES];
-    si8 start_time;
-    si8 end_time;
+    si8 start_time, end_time;
+    si8 start_samp, end_samp;
     sf8 sampling_frequency;
     si4 num_samps, samps_returned;
     si4 *samp_buf;
@@ -42,8 +42,24 @@ int main()
     // allocate output buffer
     samp_buf = (si4*)calloc(num_samps, sizeof(si4));
     
+    printf("***** Test 1, extracting samples by time range. *****\n");
+    
     // get data
-    samps_returned = read_mef_ts_data_by_time(channel_path, NULL, start_time, end_time, samp_buf);
+    samps_returned = read_mef_ts_data_by_time(channel_path, NULL, start_time, end_time, samp_buf, NULL);
+    
+    // output data
+    printf("Samps returned: %d\n", samps_returned);
+    for (int i=0;i<samps_returned;i++)
+        printf("samp: %d, time: %ld\n", samp_buf[i], start_time + (si8)(i * (1e6/sampling_frequency)));
+    
+    printf("***** Test 2, extracting samples by sample range. *****\n");
+    
+    // set parameters for next test
+    start_samp = 0;
+    end_samp = start_samp + (10 * sampling_frequency);  // 10 seconds of data, at 250 sampling frequency
+    
+    // get data
+    samps_returned = read_mef_ts_data_by_samp(channel_path, NULL, start_samp, end_samp, samp_buf, NULL);
     
     // output data
     printf("Samps returned: %d\n", samps_returned);
