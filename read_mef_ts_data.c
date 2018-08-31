@@ -27,15 +27,22 @@
 extern MEF_GLOBALS	*MEF_globals;
 
 // user specifies a time range
-si4 read_mef_ts_data_by_time(si1 *channel_path, si1 *password, si8 start_time, si8 end_time, si4 *decomp_data)
+si4 read_mef_ts_data_by_time(si1 *channel_path, si1 *password, si8 start_time, si8 end_time, si4 *decomp_data, CHANNEL *channel_passed_in)
 {
-    return read_mef_ts_data(channel_path, password, start_time, end_time, 1, decomp_data);
+    return read_mef_ts_data(channel_path, password, start_time, end_time, 1, decomp_data, channel_passed_in);
+}
+
+// user specifies a sample range
+si4 read_mef_ts_data_by_samp(si1 *channel_path, si1 *password, si8 start_samp, si8 end_samp, si4 *decomp_data, CHANNEL *channel_passed_in)
+{
+    return read_mef_ts_data(channel_path, password, start_samp, end_samp, 0, decomp_data, channel_passed_in);
 }
 
 // this function should not be called directly by user, but rather by a function specified above
-si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_time, si8 end_time, si4 times_specified, si4 *decomp_data)
+si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_value, si4 times_specified, si4 *decomp_data, CHANNEL *channel_passed_in)
 {
     // Specified by user
+    si8     start_time, end_time;
     si8     start_samp, end_samp;
     
     // Method specific variables
@@ -60,6 +67,7 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_time, si8 end_t
     si4 num_samps;
     si4 offset_into_output_buffer;
     si8 block_start_time_offset;
+    si4 read_channel;
     
     // check if no buffer is passed in
     if (decomp_data == NULL)
@@ -68,23 +76,44 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_time, si8 end_t
         return 0;
     }
     
-    // set up mef 3 library
-    (void) initialize_meflib();
-    MEF_globals->behavior_on_fail = RETURN_ON_FAIL;
-    
-    channel = read_MEF_channel(NULL, channel_path, TIME_SERIES_CHANNEL_TYPE, password, NULL, MEF_FALSE, MEF_FALSE);
-    
-    if (channel->channel_type != TIME_SERIES_CHANNEL_TYPE) {
-        printf("Not a time series channel, exiting...");
-        return 0;
+    if (channel_passed_in == NULL)
+    {
+        read_channel = 1;
+        
+        // set up mef 3 library
+        (void) initialize_meflib();
+        MEF_globals->behavior_on_fail = RETURN_ON_FAIL;
+        
+        channel = read_MEF_channel(NULL, channel_path, TIME_SERIES_CHANNEL_TYPE, password, NULL, MEF_FALSE, MEF_FALSE);
+        
+        if (channel->channel_type != TIME_SERIES_CHANNEL_TYPE) {
+            printf("Not a time series channel, exiting...");
+            return 0;
+        }
+    }
+    else
+    {
+        read_channel = 0;
+        channel = channel_passed_in;
     }
     
-    //TODO - take care of situation when user passes times but does not raise the flag times_specified
+    // interpret parameters based on whether times or samples are being specified
+    
+    if (times_specified)
+    {
+        start_time = start_value;
+        end_time = end_value;
+    }
+    else
+    {
+        start_samp = start_value;
+        end_samp = end_value;
+    }
     
     // If None was passed as one of the arguments move to the start or end of the recording
-    start_samp = 0;
+    //start_samp = 0;
     //start_time = channel->earliest_start_time;
-    end_samp = channel->metadata.time_series_section_2->number_of_samples;
+    //end_samp = channel->metadata.time_series_section_2->number_of_samples;
     //end_time = channel->latest_end_time;
     
     
@@ -152,6 +181,7 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_time, si8 end_t
     n_segments = channel->number_of_segments;
     start_segment = end_segment = -1;
     
+    // fill in whatever data we don't know
     if (times_specified) {
         start_samp = sample_for_uutc_c(start_time, channel);
         end_samp = sample_for_uutc_c(end_time, channel);
@@ -571,9 +601,12 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_time, si8 end_t
     free (rps->difference_buffer);
     free (rps);
     
-    if (channel->number_of_segments > 0)
-        channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-    free_channel(channel, MEF_TRUE);
+    if (read_channel == 1)
+    {
+        if (channel->number_of_segments > 0)
+            channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+        free_channel(channel, MEF_TRUE);
+    }
     
     
     return num_samps;
