@@ -1,5 +1,5 @@
 // Multiscale Electrophysiology Format (MEF) version 3.0
-// Copyright 2018, Mayo Foundation, Rochester MN. All rights reserved.
+// Copyright 2020, Mayo Foundation, Rochester MN. All rights reserved.
 // Written by Matt Stead, Ben Brinkmann, and Dan Crepeau.
 
 // Usage and modification of this source code is governed by the Apache 2.0 license.
@@ -50,7 +50,11 @@ int main()
     // output data
     printf("Samps returned: %d\n", samps_returned);
     for (int i=0;i<samps_returned;i++)
+#ifndef _WIN32
         printf("samp: %d, time: %ld\n", samp_buf[i], start_time + (si8)(i * (1e6/sampling_frequency)));
+#else
+        printf("samp: %d, time: %lld\n", samp_buf[i], start_time + (si8)(i * (1e6 / sampling_frequency)));
+#endif
     
     printf("***** Test 2, extracting samples by sample range. *****\n");
     
