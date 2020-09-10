@@ -1,6 +1,6 @@
 /**********************************************************************************************************************
  
- Copyright 2018, Mayo Foundation, Rochester MN. All rights reserved.
+ Copyright 2020, Mayo Foundation, Rochester MN. All rights reserved.
  
  To compile for a 64-bit intel system, linking with the following files is necessary:
  meflib.c, mefrec.c
@@ -120,18 +120,24 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     // check if valid data range
     if (times_specified && start_time >= end_time)
     {
-        printf( "Start time later than end time, exiting...");
-        if (channel->number_of_segments > 0)
-            channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-        free_channel(channel, MEF_TRUE);
+        printf("Start time later than end time, exiting...");
+        if (read_channel == 1)
+        {
+            if (channel->number_of_segments > 0)
+                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+            free_channel(channel, MEF_TRUE);
+        }
         return 0;
     }
     if (!times_specified && start_samp >= end_samp)
     {
         printf("Start sample larger than end sample, exiting...");
-        if (channel->number_of_segments > 0)
-            channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-        free_channel(channel, MEF_TRUE);
+        if (read_channel == 1)
+        {
+            if (channel->number_of_segments > 0)
+                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+            free_channel(channel, MEF_TRUE);
+        }
         return 0;
     }
     
@@ -140,10 +146,13 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         if (((start_time < channel->earliest_start_time) & (end_time < channel->earliest_start_time)) |
             ((start_time > channel->latest_end_time) & (end_time > channel->latest_end_time))){
             printf("Start and stop times are out of file.");
-            if (channel->number_of_segments > 0)
-                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-            free_channel(channel, MEF_TRUE);
-            return 0;
+            if (read_channel == 1)
+            {
+                if (channel->number_of_segments > 0)
+                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                free_channel(channel, MEF_TRUE);
+            }
+			return 0;
         }
         if (end_time > channel->latest_end_time)
             printf("Stop uutc later than latest end time. Will insert NaNs");
@@ -154,9 +163,12 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         if (((start_samp < 0) & (end_samp < 0)) |
             ((start_samp > channel->metadata.time_series_section_2->number_of_samples) & (end_samp > channel->metadata.time_series_section_2->number_of_samples))){
             printf("Start and stop samples are out of file. Returning None");
-            if (channel->number_of_segments > 0)
-                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-            free_channel(channel, MEF_TRUE);
+            if (read_channel == 1)
+            {
+                if (channel->number_of_segments > 0)
+                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                free_channel(channel, MEF_TRUE);
+            }
             return 0;
         }
         if (end_samp > channel->metadata.time_series_section_2->number_of_samples){
@@ -298,9 +310,12 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         
         if (channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].file_offset < 1024){
             printf("Invalid index file offset, exiting...");
-            if (channel->number_of_segments > 0)
-                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-            free_channel(channel, MEF_TRUE);
+            if (read_channel == 1)
+            {
+                if (channel->number_of_segments > 0)
+                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                free_channel(channel, MEF_TRUE);
+            }
             return 0;
         }
         
@@ -314,9 +329,12 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
             
             if (channel->segments[i].time_series_indices_fps->time_series_indices[0].file_offset < 1024){
                 printf("Invalid index file offset, exiting...");
-                if (channel->number_of_segments > 0)
-                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-                free_channel(channel, MEF_TRUE);
+                if (read_channel == 1)
+                {
+                    if (channel->number_of_segments > 0)
+                        channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                    free_channel(channel, MEF_TRUE);
+                }
                 return 0;
             }
         }
@@ -341,9 +359,12 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         
         if (channel->segments[end_segment].time_series_indices_fps->time_series_indices[end_idx].file_offset < 1024){
             printf("Invalid index file offset, exiting...");
-            if (channel->number_of_segments > 0)
-                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-            free_channel(channel, MEF_TRUE);
+            if (read_channel == 1)
+            {
+                if (channel->number_of_segments > 0)
+                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                free_channel(channel, MEF_TRUE);
+            }
             return 0;
         }
     }
@@ -359,14 +380,25 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     // read in RED data
     // normal case - everything is in one segment
     if (start_segment == end_segment) {
+        if (channel->segments[start_segment].time_series_data_fps->fp == NULL)
+            channel->segments[start_segment].time_series_data_fps->fp = fopen(channel->segments[start_segment].time_series_data_fps->full_file_name, "rb");
         fp = channel->segments[start_segment].time_series_data_fps->fp;
+#ifndef _WIN32
         fseek(fp, channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].file_offset, SEEK_SET);
+#else
+        _fseeki64(fp, channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].file_offset, SEEK_SET);
+#endif
         n_read = fread(cdp, sizeof(si1), (size_t) total_data_bytes, fp);
+        if (read_channel == 1)
+            fclose(fp);
         if (n_read != total_data_bytes){
             printf("Error reading file, exiting...");
-            if (channel->number_of_segments > 0)
-                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-            free_channel(channel, MEF_TRUE);
+            if (read_channel == 1)
+            {
+                if (channel->number_of_segments > 0)
+                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                free_channel(channel, MEF_TRUE);
+            }
             free (compressed_data_buffer);
             free (decomp_data);
             return 0;
@@ -375,16 +407,27 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     // spans across segments
     else {
         // start with first segment
+        if (channel->segments[start_segment].time_series_data_fps->fp == NULL)
+            channel->segments[start_segment].time_series_data_fps->fp = fopen(channel->segments[start_segment].time_series_data_fps->full_file_name, "rb");
         fp = channel->segments[start_segment].time_series_data_fps->fp;
+#ifndef _WIN32
         fseek(fp, channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].file_offset, SEEK_SET);
+#else
+        _fseeki64(fp, channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].file_offset, SEEK_SET);
+#endif
         bytes_to_read = channel->segments[start_segment].time_series_data_fps->file_length -
         channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].file_offset;
         n_read = fread(cdp, sizeof(si1), (size_t) bytes_to_read, fp);
+        if (read_channel == 1)
+            fclose(fp);
         if (n_read != bytes_to_read){
             printf("Error reading file, exiting...");
-            if (channel->number_of_segments > 0)
-                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-            free_channel(channel, MEF_TRUE);
+            if (read_channel == 1)
+            {
+                if (channel->number_of_segments > 0)
+                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                free_channel(channel, MEF_TRUE);
+            }
             free (compressed_data_buffer);
             free (decomp_data);
             return 0;
@@ -393,16 +436,27 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         
         // this loop will only run if there are segments in between the start and stop segments
         for (i = (start_segment + 1); i <= (end_segment - 1); i++) {
+            if (channel->segments[i].time_series_data_fps->fp == NULL)
+                channel->segments[i].time_series_data_fps->fp = fopen(channel->segments[i].time_series_data_fps->full_file_name, "rb");
             fp = channel->segments[i].time_series_data_fps->fp;
+#ifndef _WIN32
             fseek(fp, UNIVERSAL_HEADER_BYTES, SEEK_SET);
+#else
+            _fseeki64(fp, UNIVERSAL_HEADER_BYTES, SEEK_SET);
+#endif
             bytes_to_read = channel->segments[i].time_series_data_fps->file_length -
             channel->segments[i].time_series_indices_fps->time_series_indices[0].file_offset;
             n_read = fread(cdp, sizeof(si1), (size_t) bytes_to_read, fp);
+            if (read_channel == 1)
+                fclose(fp);
             if (n_read != bytes_to_read){
                 printf("Error reading file, exiting...");
-                if (channel->number_of_segments > 0)
-                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-                free_channel(channel, MEF_TRUE);
+                if (read_channel == 1)
+                {
+                    if (channel->number_of_segments > 0)
+                        channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                    free_channel(channel, MEF_TRUE);
+                }
                 free (compressed_data_buffer);
                 free (decomp_data);
                 return 0;
@@ -413,16 +467,27 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         // then last segment
         num_block_in_segment = channel->segments[end_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks;
         if (end_idx < (channel->segments[end_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks - 1)) {
+            if (channel->segments[end_segment].time_series_data_fps->fp == NULL)
+                channel->segments[end_segment].time_series_data_fps->fp = fopen(channel->segments[end_segment].time_series_data_fps->full_file_name, "rb");
             fp = channel->segments[end_segment].time_series_data_fps->fp;
+#ifndef _WIN32
             fseek(fp, UNIVERSAL_HEADER_BYTES, SEEK_SET);
+#else
+            _fseeki64(fp, UNIVERSAL_HEADER_BYTES, SEEK_SET);
+#endif
             bytes_to_read = channel->segments[end_segment].time_series_indices_fps->time_series_indices[end_idx+1].file_offset -
             channel->segments[end_segment].time_series_indices_fps->time_series_indices[0].file_offset;
             n_read = fread(cdp, sizeof(si1), (size_t) bytes_to_read, fp);
+            if (read_channel == 1)
+                fclose(fp);
             if (n_read != bytes_to_read){
                 printf("Error reading file, exiting...");
-                if (channel->number_of_segments > 0)
-                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-                free_channel(channel, MEF_TRUE);
+                if (read_channel == 1)
+                {
+                    if (channel->number_of_segments > 0)
+                        channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                    free_channel(channel, MEF_TRUE);
+                }
                 free (compressed_data_buffer);
                 free (decomp_data);
                 return 0;
@@ -431,16 +496,27 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         }
         else {
             // case where end_idx is last block in segment
+            if (channel->segments[end_segment].time_series_data_fps->fp == NULL)
+                channel->segments[end_segment].time_series_data_fps->fp = fopen(channel->segments[end_segment].time_series_data_fps->full_file_name, "rb");
             fp = channel->segments[end_segment].time_series_data_fps->fp;
+#ifndef _WIN32
             fseek(fp, UNIVERSAL_HEADER_BYTES, SEEK_SET);
+#else
+            _fseeki64(fp, UNIVERSAL_HEADER_BYTES, SEEK_SET);
+#endif
             bytes_to_read = channel->segments[end_segment].time_series_data_fps->file_length -
             channel->segments[end_segment].time_series_indices_fps->time_series_indices[0].file_offset;
             n_read = fread(cdp, sizeof(si1), (size_t) bytes_to_read, fp);
+            if (read_channel == 1)
+                fclose(fp);
             if (n_read != bytes_to_read){
                 printf("Error reading file, exiting...");
-                if (channel->number_of_segments > 0)
-                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-                free_channel(channel, MEF_TRUE);
+                if (read_channel == 1)
+                {
+                    if (channel->number_of_segments > 0)
+                        channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                    free_channel(channel, MEF_TRUE);
+                }
                 free (compressed_data_buffer);
                 free (decomp_data);
                 return 0;
@@ -474,9 +550,12 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     if (!check_block_crc((ui1*)(rps->block_header), max_samps, compressed_data_buffer, total_data_bytes))
     {
         printf("RED block %lu has 0 bytes, or CRC failed, data likely corrupt...", start_idx);
-        if (channel->number_of_segments > 0)
-            channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-        free_channel(channel, MEF_TRUE);
+        if (read_channel == 1)
+        {
+            if (channel->number_of_segments > 0)
+                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+            free_channel(channel, MEF_TRUE);
+        }
         free (compressed_data_buffer);
         free (decomp_data);
         free (temp_data_buf);
@@ -522,9 +601,12 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         
         if ((rps->block_header->block_bytes == 0) || !check_block_crc((ui1*)(rps->block_header), max_samps, compressed_data_buffer, total_data_bytes)){
             printf("RED block %lu has 0 bytes, or CRC failed, data likely corrupt...", start_idx+i);
-            if (channel->number_of_segments > 0)
-                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-            free_channel(channel, MEF_TRUE);
+            if (read_channel == 1)
+            {
+                if (channel->number_of_segments > 0)
+                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                free_channel(channel, MEF_TRUE);
+            }
             free (compressed_data_buffer);
             free (decomp_data);
             free (temp_data_buf);
@@ -560,9 +642,12 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         if (!check_block_crc((ui1*)(rps->block_header), max_samps, compressed_data_buffer, total_data_bytes))
         {
             printf("RED block %lu has 0 bytes, or CRC failed, data likely corrupt...", start_idx+i);
-            if (channel->number_of_segments > 0)
-                channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
-            free_channel(channel, MEF_TRUE);
+            if (read_channel == 1)
+            {
+                if (channel->number_of_segments > 0)
+                    channel->segments[0].metadata_fps->directives.free_password_data = MEF_TRUE;
+                free_channel(channel, MEF_TRUE);
+            }
             free (compressed_data_buffer);
             free (decomp_data);
             free (temp_data_buf);
