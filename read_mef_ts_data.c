@@ -1,6 +1,6 @@
 /**********************************************************************************************************************
  
- Copyright 2020, Mayo Foundation, Rochester MN. All rights reserved.
+ Copyright 2022, Mayo Foundation, Rochester MN. All rights reserved.
  
  To compile for a 64-bit intel system, linking with the following files is necessary:
  meflib.c, mefrec.c
@@ -13,7 +13,7 @@
  in academic publications of their work facilitated by this software.
  
  Multiscale Electrophysiology Format (MEF) version 3.0
- Copyright 2018, Mayo Foundation, Rochester MN. All rights reserved.
+ Copyright 2022, Mayo Foundation, Rochester MN. All rights reserved.
  Written by Matt Stead, Ben Brinkmann, Jan Cimbalnik, and Dan Crepeau.
  
  usage notes: it is the user's responsibilitiy to ensure an adequate length decomp_data (sample buffer) is allocated,
@@ -29,17 +29,163 @@ extern MEF_GLOBALS	*MEF_globals;
 // user specifies a time range
 si4 read_mef_ts_data_by_time(si1 *channel_path, si1 *password, si8 start_time, si8 end_time, si4 *decomp_data, CHANNEL *channel_passed_in)
 {
-    return read_mef_ts_data(channel_path, password, start_time, end_time, 1, decomp_data, channel_passed_in);
+    return read_mef_ts_data(channel_path, password, start_time, end_time, 1, decomp_data, channel_passed_in, -1);
+}
+
+// user specifies a time range
+si4 read_mef_ts_data_by_time_with_limit(si1 *channel_path, si1 *password, si8 start_time, si8 end_time, si4 *decomp_data, CHANNEL *channel_passed_in, si4 sample_limit)
+{
+    return read_mef_ts_data(channel_path, password, start_time, end_time, 1, decomp_data, channel_passed_in, sample_limit);
 }
 
 // user specifies a sample range
 si4 read_mef_ts_data_by_samp(si1 *channel_path, si1 *password, si8 start_samp, si8 end_samp, si4 *decomp_data, CHANNEL *channel_passed_in)
 {
-    return read_mef_ts_data(channel_path, password, start_samp, end_samp, 0, decomp_data, channel_passed_in);
+    return read_mef_ts_data(channel_path, password, start_samp, end_samp, 0, decomp_data, channel_passed_in, -1);
+}
+
+// returns a CHANNEL struct given a channel path and password
+CHANNEL *get_channel_struct(si1 *channel_path, si1 *password)
+{
+    CHANNEL *channel;
+    
+    // set up mef 3 library
+    (void) initialize_meflib();
+    MEF_globals->behavior_on_fail = RETURN_ON_FAIL;
+    
+    channel = read_MEF_channel(NULL, channel_path, TIME_SERIES_CHANNEL_TYPE, password, NULL, MEF_FALSE, MEF_FALSE);
+    
+    return channel;
+}
+
+sf8 get_channel_sampling_frequency(CHANNEL *channel)
+{
+    if (channel == NULL)
+        return -1;
+    
+    return channel->metadata.time_series_section_2->sampling_frequency;
+}
+
+sf8 get_channel_units_conversion_factor(CHANNEL *channel)
+{
+    if (channel == NULL)
+        return -1;
+    
+    return channel->metadata.time_series_section_2->units_conversion_factor;
+}
+
+
+// returns number of ranges
+si4 find_start_and_end_times_of_continuous_ranges(si1 *channel_path, si1 *password, si8 **start_continuous_input, si8 **end_continuous_input, CHANNEL *channel_passed_in)
+{
+    CHANNEL    *channel;
+    CONTINUOUS_RANGE_NODE *head;
+    CONTINUOUS_RANGE_NODE *current;
+    CONTINUOUS_RANGE_NODE *node_temp;
+    si4 node_counter;
+    ui4 n_segments;
+    si4 i, j;
+    si8 block_start_time;
+    
+    si8 *start_continuous;
+    si8 *end_continuous;
+    
+    start_continuous = *start_continuous_input;
+    end_continuous = *end_continuous_input;
+    
+    if (channel_passed_in == NULL)
+    {
+        // set up mef 3 library
+        (void) initialize_meflib();
+        MEF_globals->behavior_on_fail = RETURN_ON_FAIL;
+        
+        channel = read_MEF_channel(NULL, channel_path, TIME_SERIES_CHANNEL_TYPE, password, NULL, MEF_FALSE, MEF_FALSE);
+        
+        if (channel->channel_type != TIME_SERIES_CHANNEL_TYPE) {
+            printf("Not a time series channel, exiting...");
+            return 0;
+        }
+    }
+    else
+    {
+        channel = channel_passed_in;
+    }
+
+    head = current = NULL;
+    node_counter = 0;
+    
+    n_segments = channel->number_of_segments;
+    //fprintf(stderr, "segments: %d\n", n_segments);
+    
+    // iterate over segments
+    for (i=0;i<n_segments;i++)
+    {
+        // iterate over blocks within segments
+        for (j = 0; j < channel->segments[i].metadata_fps->metadata.time_series_section_2->number_of_blocks; j++)
+        {
+            block_start_time = channel->segments[i].time_series_indices_fps->time_series_indices[j].start_time;
+            remove_recording_time_offset( &block_start_time);
+            
+            // check to see if block is start of a new continuous region.
+            // First block of recording is by definition marked as discontinuous - but check to just make sure.
+            if ((channel->segments[i].time_series_indices_fps->time_series_indices[j].RED_block_flags & RED_DISCONTINUITY_MASK) ||
+                ((i == 0) && (j == 0)))
+            {
+                if (head == NULL)
+                {
+                    head = current = (struct CONTINUOUS_RANGE_NODE*)malloc(sizeof(struct CONTINUOUS_RANGE_NODE));
+                    current->next = NULL;
+                }
+                else
+                {
+                    node_temp = (struct CONTINUOUS_RANGE_NODE*)malloc(sizeof(struct CONTINUOUS_RANGE_NODE));
+                    current->next = node_temp;
+                    current = current->next;
+                    current->next = NULL;
+                }
+                
+                // set start time of range.  This won't be changed later.
+                current->start_time = block_start_time;
+                
+                node_counter++;
+            }
+            
+            // calculate block end time, and set this to be the range end time (although it might be overridden later blocks)
+            current->end_time = block_start_time + ((channel->segments[i].time_series_indices_fps->time_series_indices[j].number_of_samples / channel->metadata.time_series_section_2->sampling_frequency) * 1e6);
+        }
+    }
+    
+    // allocate output arrays
+    start_continuous = (si8*) malloc(sizeof(si8) * node_counter);
+    end_continuous = (si8*) malloc(sizeof(si8) * node_counter);
+    
+    // set function parameters so calling function has access to what was allocated within this function
+    *start_continuous_input = start_continuous;
+    *end_continuous_input = end_continuous;
+    
+    // set data of output arrays
+    current = head;
+    for (i=0;i<node_counter;i++)
+    {
+        start_continuous[i] = current->start_time;
+        end_continuous[i] = current->end_time;
+        current = current->next;
+    }
+    
+    // clean up linked list
+    while (head != NULL)
+    {
+        //fprintf(stderr, "start %ld end %ld\n", head->start_time, head->end_time);
+        node_temp = head->next;
+        free (head);
+        head = node_temp;
+    }
+    
+    return node_counter;
 }
 
 // this function should not be called directly by user, but rather by a function specified above
-si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_value, si4 times_specified, si4 *decomp_data, CHANNEL *channel_passed_in)
+si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_value, si4 times_specified, si4 *decomp_data, CHANNEL *channel_passed_in, si4 sample_limit)
 {
     // Specified by user
     si8     start_time, end_time;
@@ -187,6 +333,14 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     else
         num_samps = end_samp - start_samp;
     
+    // enforce limit, so we don't overrun buffers.  This is important in some cases when specifying by time - as we don't always know
+    // how many samples are in a time range, due to frequency drift and other potential issues.
+    if (sample_limit > 0)
+    {
+        if (num_samps > sample_limit)
+            num_samps = sample_limit;
+    }
+    
     //fprintf(stderr, "Num_samps = %d\n", num_samps);
     
     // Iterate through segments, looking for data that matches our criteria
@@ -283,7 +437,7 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     
     // normal case - everything is in one segment
     if (start_segment == end_segment) {
-        if (end_idx < (channel->segments[start_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks - 1)) {
+        if (end_idx < (ui8) (channel->segments[start_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks - 1)) {
             total_samps += channel->segments[start_segment].time_series_indices_fps->time_series_indices[end_idx+1].start_sample -
             channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].start_sample;
             total_data_bytes += channel->segments[start_segment].time_series_indices_fps->time_series_indices[end_idx+1].file_offset -
@@ -301,7 +455,7 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     // spans across segments
     else {
         // start with first segment
-        num_block_in_segment = channel->segments[start_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks;
+        num_block_in_segment = (ui8) channel->segments[start_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks;
         total_samps += channel->segments[start_segment].metadata_fps->metadata.time_series_section_2->number_of_samples -
         channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].start_sample;
         total_data_bytes +=  channel->segments[start_segment].time_series_data_fps->file_length -
@@ -321,7 +475,7 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         
         // this loop will only run if there are segments in between the start and stop segments
         for (i = (start_segment + 1); i <= (end_segment - 1); i++) {
-            num_block_in_segment = channel->segments[i].metadata_fps->metadata.time_series_section_2->number_of_blocks;
+            num_block_in_segment = (ui8) channel->segments[i].metadata_fps->metadata.time_series_section_2->number_of_blocks;
             total_samps += channel->segments[i].metadata_fps->metadata.time_series_section_2->number_of_samples;
             total_data_bytes += channel->segments[i].time_series_data_fps->file_length -
             channel->segments[i].time_series_indices_fps->time_series_indices[0].file_offset;
@@ -340,8 +494,8 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         }
         
         // then last segment
-        num_block_in_segment = channel->segments[end_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks;
-        if (end_idx < (channel->segments[end_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks - 1)) {
+        num_block_in_segment = (ui8) channel->segments[end_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks;
+        if (end_idx < (ui8) (channel->segments[end_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks - 1)) {
             total_samps += channel->segments[end_segment].time_series_indices_fps->time_series_indices[end_idx+1].start_sample -
             channel->segments[end_segment].time_series_indices_fps->time_series_indices[0].start_sample;
             total_data_bytes += channel->segments[end_segment].time_series_indices_fps->time_series_indices[end_idx+1].file_offset -
@@ -466,7 +620,7 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
         
         // then last segment
         num_block_in_segment = channel->segments[end_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks;
-        if (end_idx < (channel->segments[end_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks - 1)) {
+        if (end_idx < (ui8) (channel->segments[end_segment].metadata_fps->metadata.time_series_section_2->number_of_blocks - 1)) {
             if (channel->segments[end_segment].time_series_data_fps->fp == NULL)
                 channel->segments[end_segment].time_series_data_fps->fp = fopen(channel->segments[end_segment].time_series_data_fps->full_file_name, "rb");
             fp = channel->segments[end_segment].time_series_data_fps->fp;
@@ -534,7 +688,7 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     rps->compression.mode = RED_DECOMPRESSION;
     //rps->directives.return_block_extrema = MEF_TRUE;
     rps->decompressed_ptr = rps->decompressed_data = decomp_data;
-    rps->difference_buffer = (si1 *) e_calloc((size_t) RED_MAX_DIFFERENCE_BYTES(max_samps), sizeof(ui1), __FUNCTION__, __LINE__, USE_GLOBAL_BEHAVIOR);
+    rps->difference_buffer = (si1 *) e_calloc((size_t) RED_MAX_DIFFERENCE_BYTES(max_samps) + 1, sizeof(ui1), __FUNCTION__, __LINE__, USE_GLOBAL_BEHAVIOR);
     
     // offset_to_start_samp = start_samp - channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].start_sample;
     
@@ -565,11 +719,20 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
     cdp += rps->block_header->block_bytes;
     
     
-    if (times_specified)
-        offset_into_output_buffer = (int)((((rps->block_header->start_time - start_time) / 1000000.0) * channel->metadata.time_series_section_2->sampling_frequency) + 0.5);
-    else
-        offset_into_output_buffer = channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].start_sample - start_samp;
-    
+        if (times_specified)
+        {
+            // rps->block_header->start_time is already offset during RED_decode()
+            
+            if ((rps->block_header->start_time - start_time) >= 0)
+                offset_into_output_buffer = (si4) ((((rps->block_header->start_time - start_time) / 1000000.0) * channel->metadata.time_series_section_2->sampling_frequency) + 0.5);
+            else
+                offset_into_output_buffer = (si4) ((((rps->block_header->start_time - start_time) / 1000000.0) * channel->metadata.time_series_section_2->sampling_frequency) - 0.5);
+        }
+        else
+            offset_into_output_buffer = (si4) (channel->segments[start_segment].metadata_fps->metadata.time_series_section_2->start_sample +
+                                               channel->segments[start_segment].time_series_indices_fps->time_series_indices[start_idx].start_sample) - start_samp;
+        
+
     // copy requested samples from first block to output buffer
     // TBD this loop could be optimized
     for (i=0;i<rps->block_header->number_of_samples;i++)
@@ -580,7 +743,7 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
             continue;
         }
         
-        if (offset_into_output_buffer >= num_samps)
+        if ((ui4) offset_into_output_buffer >= num_samps)
             break;
         
         *(decomp_data + offset_into_output_buffer) = temp_data_buf[i];
@@ -654,11 +817,16 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
             return 0;
         }
         RED_decode(rps);
-        
-        offset_into_output_buffer = (int)((((rps->block_header->start_time - start_time) / 1000000.0) * channel->metadata.time_series_section_2->sampling_frequency) + 0.5);
-        
-        if (times_specified)
-            offset_into_output_buffer = (int)((((rps->block_header->start_time - start_time) / 1000000.0) * channel->metadata.time_series_section_2->sampling_frequency) + 0.5);
+   
+ 		if (times_specified)
+        {
+            // rps->block_header->start_time is already offset during RED_decode()
+            
+            if ((rps->block_header->start_time - start_time) >= 0)
+                offset_into_output_buffer = (si4) ((((rps->block_header->start_time - start_time) / 1000000.0) * channel->metadata.time_series_section_2->sampling_frequency) + 0.5);
+            else
+                offset_into_output_buffer = (si4) ((((rps->block_header->start_time - start_time) / 1000000.0) * channel->metadata.time_series_section_2->sampling_frequency) - 0.5);
+        }
         else
             offset_into_output_buffer = sample_counter;
         
@@ -672,7 +840,7 @@ si4 read_mef_ts_data(si1 *channel_path, si1 *password, si8 start_value, si8 end_
                 continue;
             }
             
-            if (offset_into_output_buffer >= num_samps)
+            if ((ui4) offset_into_output_buffer >= num_samps)
                 break;
             
             *(decomp_data + offset_into_output_buffer) = temp_data_buf[i];
@@ -707,24 +875,37 @@ si8 sample_for_uutc_c(si8 uutc, CHANNEL *channel)
     sf8 native_samp_freq;
     ui8 prev_sample_number;
     si8 prev_time, seg_start_sample;
+    si8 next_sample_number;
     
     native_samp_freq = channel->metadata.time_series_section_2->sampling_frequency;
     prev_sample_number = channel->segments[0].metadata_fps->metadata.time_series_section_2->start_sample;
     prev_time = channel->segments[0].time_series_indices_fps->time_series_indices[0].start_time;
     
-    for (j = 0; j < channel->number_of_segments; j++)
+    for (j = 0; j < (ui8) channel->number_of_segments; j++)
     {
         seg_start_sample = channel->segments[j].metadata_fps->metadata.time_series_section_2->start_sample;
-        for (i = 0; i < channel->segments[j].metadata_fps->metadata.time_series_section_2->number_of_blocks; ++i) {
+        
+        // initialize next_sample_number to end of current segment, in case we're on the last segment and we
+        // go all the way to the end of the segment.
+        // Otherwise this value will get overridden later on
+        next_sample_number = seg_start_sample + channel->segments[j].metadata_fps->metadata.time_series_section_2->number_of_samples;
+        
+        for (i = 0; i < (ui8) channel->segments[j].metadata_fps->metadata.time_series_section_2->number_of_blocks; ++i) {
             if (channel->segments[j].time_series_indices_fps->time_series_indices[i].start_time > uutc)
+            {
+                next_sample_number = channel->segments[j].time_series_indices_fps->time_series_indices[i].start_sample + seg_start_sample;
                 goto done;
+            }
             prev_sample_number = channel->segments[j].time_series_indices_fps->time_series_indices[i].start_sample + seg_start_sample;
             prev_time = channel->segments[j].time_series_indices_fps->time_series_indices[i].start_time;
         }
     }
     
 done:
+    
     sample = prev_sample_number + (ui8) (((((sf8) (uutc - prev_time)) / 1000000.0) * native_samp_freq) + 0.5);
+    if (sample > next_sample_number)
+        sample = next_sample_number;  // prevent it from going too far
     
     return(sample);
 }
@@ -733,27 +914,27 @@ si8 uutc_for_sample_c(si8 sample, CHANNEL *channel)
 {
     ui8 i, j, uutc;
     sf8 native_samp_freq;
-    ui8 prev_sample_number;
+    ui8 prev_sample_number; 
     si8 prev_time, seg_start_sample;
-    
-    
+
+
     native_samp_freq = channel->metadata.time_series_section_2->sampling_frequency;
     prev_sample_number = channel->segments[0].metadata_fps->metadata.time_series_section_2->start_sample;
     prev_time = channel->segments[0].time_series_indices_fps->time_series_indices[0].start_time;
-    
-    for (j = 0; j < channel->number_of_segments; j++)
+
+    for (j = 0; j < (ui8) channel->number_of_segments; j++)
     {
         seg_start_sample = channel->segments[j].metadata_fps->metadata.time_series_section_2->start_sample;
-        for (i = 0; i < channel->segments[j].metadata_fps->metadata.time_series_section_2->number_of_blocks; ++i){
+        for (i = 0; i < (ui8) channel->segments[j].metadata_fps->metadata.time_series_section_2->number_of_blocks; ++i){
             if (channel->segments[j].time_series_indices_fps->time_series_indices[i].start_sample + seg_start_sample > sample)
                 goto done;
             prev_sample_number = channel->segments[j].time_series_indices_fps->time_series_indices[i].start_sample + seg_start_sample;
             prev_time = channel->segments[j].time_series_indices_fps->time_series_indices[i].start_time;
         }
     }
-    
-done:
-    uutc = prev_time + (ui8) ((((sf8) (sample - prev_sample_number) / native_samp_freq) * 1000000.0) + 0.5);
+
+    done:
+        uutc = prev_time + (ui8) ((((sf8) (sample - prev_sample_number) / native_samp_freq) * 1000000.0) + 0.5);
     
     return(uutc);
 }
